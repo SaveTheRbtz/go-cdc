@@ -1,9 +1,8 @@
 # Content Defined Chunking playground
 
-This repository provides reference implementations of the
-RepMaxCDC "Repeated Maximum" [Content-Defined
-Chunking](https://en.wikipedia.org/wiki/Rolling_hash) function, which is
-written in the Go programming language. RepMaxCDC is
+This repository provides Go implementations of RepMaxCDC "Repeated Maximum"
+and several related [Content-Defined
+Chunking](https://en.wikipedia.org/wiki/Rolling_hash) algorithms. RepMaxCDC is
 [one of the standard CDC functions of Bazel's remote execution protocol](https://github.com/bazelbuild/remote-apis/pull/282).
 An implementation written in Java
 [is part of Bazel](https://github.com/bazelbuild/bazel/pull/30131).
@@ -34,10 +33,11 @@ Two Gear-based implementations of RepMaxCDC are included:
   repeatedly.
 
 - [`rep_max_chunk_reader.go`](/rep_max_chunk_reader.go): The optimized
-  RepMaxCDC engine shared by the Gear and polynomial variants. It avoids
-  redundant hashing on the normal path by retaining a small frontier of
-  record maxima across calls. A concrete internal hash configuration selects
-  the Gear or polynomial scanner once per region, keeping each hot loop direct.
+  RepMaxCDC engine shared by the Gear, polynomial, and lexicographic variants.
+  It avoids redundant score computation on the normal path by retaining a
+  small frontier of record maxima across calls. A concrete internal ordering
+  configuration selects the specialized scanner once per region, keeping each
+  hot loop direct.
 
 Tests are used to validate that both implementations yield the same
 results.
@@ -47,6 +47,39 @@ shared RepMaxCDC engine. Its fixed 64-byte rolling hash modulo $2^{64}$ lives
 in [`polynomial_hash.go`](/polynomial_hash.go). It retains the state reuse and
 targeted-search support of the optimized Gear implementation, but produces
 different chunk boundaries.
+
+The package also contains several hashless CDC families:
+
+- `NewLexicographicRepMaxContentDefinedChunker()` applies the RepMaxCDC
+  selection rule to fixed-size byte strings in unsigned lexicographic order.
+  It is based on the [hash-less local maxima construction described by
+  Bjørner, Blass, and Gurevich](https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2007-102.pdf).
+
+- `NewAsymmetricExtremumContentDefinedChunker()` implements byte-wise
+  [AE-Max](https://cswxia.github.io/pub/AE-INFOCOM-zhang-2015.pdf).
+  `NewWideAsymmetricExtremumContentDefinedChunker()` extends the same rule to
+  overlapping 1-, 2-, 4-, or 8-byte regions. Regions use explicit unsigned
+  little-endian ordering, making the x86 ordering of the public
+  [WideCDC artifact](https://github.com/UWASL/dedup-bench/tree/artifact_fast27)
+  deterministic on every architecture. The one-byte form is exactly AE-Max.
+
+- `NewRAMContentDefinedChunker()` implements canonical, uncapped
+  [Rapid Asymmetric Maximum](https://doi.org/10.1016/j.future.2017.02.013).
+  `NewRAMLContentDefinedChunker()` is the separately named length-limited
+  variant, with the [evaluated RAML cap of four times the window
+  size](https://tsukuba.repo.nii.ac.jp/record/2005453/files/DA010258.pdf).
+
+- `NewSeqContentDefinedChunker()` implements increasing-mode
+  [SeqCDC](https://sreeharshau.github.io/papers/SeqCDC_Middleware24.pdf) with
+  the paper's parameter sets targeting 4, 8, and 16 KiB averages. This
+  implementation interprets increasing sequences strictly and includes the
+  terminal byte, rather than reproducing the equality and length conventions
+  of the reference C++ implementation.
+
+The AE, WideAE, RAM, RAML, SeqCDC, and lexicographic RepMax variants do not
+support `DiscardUpToGuaranteedChunk()`. Canonical RAM is intentionally uncapped
+and may produce very large chunks on structured input; RAML is the bounded
+alternative for applications that require predictable memory use.
 
 Builds made with `GOEXPERIMENT=simd` use Go's experimental SIMD packages. On
 amd64, the polynomial scanner uses `simd/archsimd`; other architectures use

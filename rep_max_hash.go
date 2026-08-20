@@ -1,8 +1,8 @@
 package cdc
 
-// repMaxHash is the immutable hash configuration used by the shared RepMaxCDC
-// engine. It is deliberately concrete: Gear and polynomial hashing are tightly
-// coupled to the scanner, and the package does not expose custom hash variants.
+// repMaxHash is the immutable ordering configuration used by the shared
+// RepMaxCDC engine. It is deliberately concrete: every supported ordering has
+// a scanner tailored to its representation.
 type repMaxHash struct {
 	kind            repMaxHashKind
 	windowSizeBytes int
@@ -15,6 +15,7 @@ const (
 	repMaxHashInvalid repMaxHashKind = iota
 	repMaxHashGear
 	repMaxHashPolynomial
+	repMaxHashLexicographic
 )
 
 func newGearRepMaxHash(gearTable *GearTable) repMaxHash {
@@ -32,6 +33,13 @@ func newPolynomialRepMaxHash() repMaxHash {
 	}
 }
 
+func newLexicographicRepMaxHash(windowSizeBytes int) repMaxHash {
+	return repMaxHash{
+		kind:            repMaxHashLexicographic,
+		windowSizeBytes: windowSizeBytes,
+	}
+}
+
 // initialHash computes the hash of exactly one complete hash window.
 func (h repMaxHash) initialHash(window []byte) uint64 {
 	switch h.kind {
@@ -43,28 +51,40 @@ func (h repMaxHash) initialHash(window []byte) uint64 {
 		return hash
 	case repMaxHashPolynomial:
 		return computePolynomialHash(window)
+	case repMaxHashLexicographic:
+		return lexicographicWindowPrefix(window)
 	default:
 		panic("Unknown RepMax hash")
 	}
 }
 
-func (h repMaxHash) rollHash(hash uint64, outgoing, incoming byte) uint64 {
+// rollHash slides the stored comparison key by one byte. For lexicographic
+// windows longer than eight bytes, entering is the byte entering the stored
+// eight-byte prefix, rather than the byte entering the end of the window.
+func (h repMaxHash) rollHash(hash uint64, outgoing, entering byte) uint64 {
 	switch h.kind {
 	case repMaxHashGear:
-		return (hash << 1) + h.gearValues[incoming]
+		return (hash << 1) + h.gearValues[entering]
 	case repMaxHashPolynomial:
-		return rollPolynomialHash(hash, outgoing, incoming)
+		return rollPolynomialHash(hash, outgoing, entering)
+	case repMaxHashLexicographic:
+		hash = hash<<8 | uint64(entering)
+		if h.windowSizeBytes < lexicographicWindowPrefixSizeBytes {
+			return hash & (^uint64(0) >> uint(64-8*h.windowSizeBytes))
+		}
+		return hash
 	default:
 		panic("Unknown RepMax hash")
 	}
 }
 
 // scanRecordMaxima advances frontier over data. The prefix of data is the
-// current hash window; the remaining bytes are the incoming bytes to scan.
+// current score window; the remaining bytes are the incoming bytes to scan.
 // A record at incoming byte i is stored at scannedOffset+i+1. Comparisons are
-// strict so equal hashes retain the leftmost cut.
+// strict so equal scores retain the leftmost cut. maximumWindow is only used
+// by the lexicographic scanner when two windows have equal 64-bit prefixes.
 func (h repMaxHash) scanRecordMaxima(
-	data []byte,
+	data, maximumWindow []byte,
 	frontier *repMaxFrontier,
 ) {
 	incoming := data[h.windowSizeBytes:]
@@ -79,6 +99,13 @@ func (h repMaxHash) scanRecordMaxima(
 	case repMaxHashPolynomial:
 		scanPolynomialRepMaxRecordMaxima(
 			data,
+			frontier.scannedOffset,
+			frontier,
+		)
+	case repMaxHashLexicographic:
+		scanLexicographicRepMaxRecordMaxima(
+			data,
+			maximumWindow,
 			frontier.scannedOffset,
 			frontier,
 		)

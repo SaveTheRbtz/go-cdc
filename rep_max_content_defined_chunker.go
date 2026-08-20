@@ -69,6 +69,38 @@ func NewPolyRepMaxContentDefinedChunker(minSizeBytes, horizonSizeBytes int) Cont
 	)
 }
 
+// NewLexicographicRepMaxContentDefinedChunker returns a content defined
+// chunker that applies RepMaxCDC to byte windows ordered lexicographically.
+// At cutting point i, the score is data[i-windowSizeBytes:i], compared as an
+// unsigned byte string (equivalent to big-endian integer ordering). Equal
+// windows retain the leftmost cut.
+//
+// windowSizeBytes must be positive and no greater than minSizeBytes,
+// horizonSizeBytes must be non-negative, and 2*minSizeBytes+horizonSizeBytes
+// must fit in an int. The function panics if these requirements are not met.
+// This variant does not support DiscardUpToGuaranteedChunk.
+func NewLexicographicRepMaxContentDefinedChunker(
+	windowSizeBytes, minSizeBytes, horizonSizeBytes int,
+) ContentDefinedChunker {
+	if windowSizeBytes <= 0 {
+		panic("Lexicographic window size is not positive")
+	}
+	if minSizeBytes < windowSizeBytes {
+		panic("Minimum chunk size is smaller than the lexicographic window")
+	}
+	if horizonSizeBytes < 0 {
+		panic("Horizon size is negative")
+	}
+	if minSizeBytes > (math.MaxInt-horizonSizeBytes)/2 {
+		panic("Minimum chunk size and horizon size are too large")
+	}
+	return newRepMaxChunker(
+		newLexicographicRepMaxHash(windowSizeBytes),
+		minSizeBytes,
+		horizonSizeBytes,
+	)
+}
+
 func newPolyRepMaxContentDefinedChunker(
 	hash repMaxHash,
 	minSizeBytes, horizonSizeBytes int,
@@ -94,10 +126,11 @@ func newRepMaxChunker(
 	minSizeBytes, horizonSizeBytes int,
 ) *repMaxChunker {
 	return &repMaxChunker{
-		hash:                               hash,
-		minSizeBytes:                       minSizeBytes,
-		peekSizeBytes:                      2*minSizeBytes + horizonSizeBytes,
-		supportsDiscardUpToGuaranteedChunk: horizonSizeBytes >= 2*(minSizeBytes-1),
+		hash:          hash,
+		minSizeBytes:  minSizeBytes,
+		peekSizeBytes: 2*minSizeBytes + horizonSizeBytes,
+		supportsDiscardUpToGuaranteedChunk: hash.kind != repMaxHashLexicographic &&
+			horizonSizeBytes >= 2*(minSizeBytes-1),
 	}
 }
 

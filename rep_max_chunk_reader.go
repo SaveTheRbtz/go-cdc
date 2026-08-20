@@ -136,9 +136,17 @@ func (r *repMaxChunkReader) scanHorizon(
 			hashRegion = hashRegion[:bytesUntilStable]
 		}
 
+		var maximumWindow []byte
+		if c.hash.kind == repMaxHashLexicographic {
+			firstEligibleCut := hashEnd - frontier.scannedOffset
+			maximumCut := firstEligibleCut +
+				frontier.candidateOffsets[len(frontier.candidateOffsets)-1]
+			maximumWindow = data[maximumCut-c.hash.windowSizeBytes : maximumCut]
+		}
 		scanData := data[hashEnd-c.hash.windowSizeBytes : hashEnd+len(hashRegion)]
 		c.hash.scanRecordMaxima(
 			scanData,
+			maximumWindow,
 			&frontier,
 		)
 		hashEnd += len(hashRegion)
@@ -152,10 +160,18 @@ func (r *repMaxChunkReader) scanHorizon(
 
 			frontier.candidateOffsets = frontier.candidateOffsets[:1]
 			frontier.scannedOffset = 0
+			enteringIndex := hashEnd
+			if c.hash.kind == repMaxHashLexicographic &&
+				c.hash.windowSizeBytes > lexicographicWindowPrefixSizeBytes {
+				// The score only stores the first eight bytes. Slide that
+				// prefix using the ninth byte of the old window.
+				enteringIndex = hashEnd - c.hash.windowSizeBytes +
+					lexicographicWindowPrefixSizeBytes
+			}
 			frontier.currentHash = c.hash.rollHash(
 				frontier.currentHash,
 				data[hashEnd-c.hash.windowSizeBytes],
-				data[hashEnd],
+				data[enteringIndex],
 			)
 			hashEnd++
 			frontier.maximumHash = frontier.currentHash
@@ -274,6 +290,7 @@ func (r *repMaxChunkReader) recomputeFrontierPrefix(
 	}
 	c.hash.scanRecordMaxima(
 		scanData,
+		scanData[:c.hash.windowSizeBytes],
 		&recomputedFrontier,
 	)
 	recomputed := recomputedFrontier.candidateOffsets
