@@ -7,6 +7,7 @@ type repMaxHash struct {
 	kind            repMaxHashKind
 	windowSizeBytes int
 	gearValues      *[256]uint64
+	useAVX2         bool
 }
 
 type repMaxHashKind uint8
@@ -77,11 +78,19 @@ func (h repMaxHash) scanRecordMaxima(
 			frontier,
 		)
 	case repMaxHashPolynomial:
-		scanPolynomialRepMaxRecordMaxima(
-			data,
-			frontier.scannedOffset,
-			frontier,
-		)
+		if h.useAVX2 {
+			scanPolynomialRepMaxRecordMaximaAVX2(
+				data,
+				frontier.scannedOffset,
+				frontier,
+			)
+		} else {
+			scanPolynomialRepMaxRecordMaxima(
+				data,
+				frontier.scannedOffset,
+				frontier,
+			)
+		}
 	default:
 		panic("Unknown RepMax hash")
 	}

@@ -30,6 +30,18 @@ const (
 	polynomialHashRollingAdjustment uint64 = 0x993fccc463c4cd00
 )
 
+// The outgoing adjustment depends on only one byte. It includes the incoming
+// coefficient offset, so advancing a hash needs only one multiply and two
+// additions.
+var polynomialHashOutgoingAdjustment = func() [256]uint64 {
+	var adjustments [256]uint64
+	for b := range 256 {
+		adjustments[b] = polynomialHashByteCoefficientOffset -
+			(uint64(b)+polynomialHashByteCoefficientOffset)*polynomialHashRemovalFactor
+	}
+	return adjustments
+}()
+
 // computePolynomialHash computes the polynomial hash of data using Horner's
 // method. Arithmetic on uint64 values intentionally wraps modulo 2^64.
 func computePolynomialHash(data []byte) uint64 {
@@ -43,8 +55,8 @@ func computePolynomialHash(data []byte) uint64 {
 // rollPolynomialHash advances a hash covering one complete window by one
 // byte. Arithmetic on uint64 values intentionally wraps modulo 2^64.
 func rollPolynomialHash(hash uint64, outgoing, incoming byte) uint64 {
-	return hash*polynomialHashBase + uint64(incoming) + polynomialHashByteCoefficientOffset -
-		(uint64(outgoing)+polynomialHashByteCoefficientOffset)*polynomialHashRemovalFactor
+	return hash*polynomialHashBase + uint64(incoming) +
+		polynomialHashOutgoingAdjustment[outgoing]
 }
 
 // polynomialRollingHash computes the polynomial hash when the preceding

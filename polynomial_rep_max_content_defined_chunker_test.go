@@ -50,24 +50,55 @@ func TestPolynomialHashRemovalFactor(t *testing.T) {
 			polynomialHashByteCoefficientOffset+1,
 		polynomialHashRollingAdjustment,
 	)
+	for b := range 256 {
+		require.Equal(
+			t,
+			polynomialHashByteCoefficientOffset-
+				(uint64(b)+polynomialHashByteCoefficientOffset)*polynomialHashRemovalFactor,
+			polynomialHashOutgoingAdjustment[b],
+		)
+	}
 }
 
 func TestNewPolyRepMaxContentDefinedChunkerInvalidParameters(t *testing.T) {
-	t.Run("MinimumSizeTooSmall", func(t *testing.T) {
-		require.Panics(t, func() {
-			NewPolyRepMaxContentDefinedChunker(polynomialHashWindowSizeBytes-1, 0)
+	constructors := map[string]func(int, int) ContentDefinedChunker{
+		"Scalar": NewPolyRepMaxContentDefinedChunker,
+		"AVX2":   NewPolyRepMaxContentDefinedChunkerAVX2,
+	}
+	for name, constructor := range constructors {
+		t.Run(name+"/MinimumSizeTooSmall", func(t *testing.T) {
+			require.Panics(t, func() {
+				constructor(polynomialHashWindowSizeBytes-1, 0)
+			})
 		})
-	})
-	t.Run("NegativeHorizon", func(t *testing.T) {
-		require.Panics(t, func() {
-			NewPolyRepMaxContentDefinedChunker(polynomialHashWindowSizeBytes, -1)
+		t.Run(name+"/NegativeHorizon", func(t *testing.T) {
+			require.Panics(t, func() {
+				constructor(polynomialHashWindowSizeBytes, -1)
+			})
 		})
-	})
-	t.Run("PeekSizeOverflow", func(t *testing.T) {
-		require.Panics(t, func() {
-			NewPolyRepMaxContentDefinedChunker(math.MaxInt/2+1, 0)
+		t.Run(name+"/PeekSizeOverflow", func(t *testing.T) {
+			require.Panics(t, func() {
+				constructor(math.MaxInt/2+1, 0)
+			})
 		})
-	})
+	}
+}
+
+func polynomialRepMaxChunkSizes(t *testing.T, data []byte, chunker ContentDefinedChunker) []int {
+	t.Helper()
+	chunkReader := chunker.NewChunkReader(bufio.NewReaderSize(
+		bytes.NewReader(data),
+		chunker.GetMaximumPeekSizeBytes(),
+	))
+	var sizes []int
+	for {
+		chunk, err := chunkReader.ReadNextChunk()
+		if err == io.EOF {
+			return sizes
+		}
+		require.NoError(t, err)
+		sizes = append(sizes, len(chunk))
+	}
 }
 
 func TestPolynomialRepMaxContentDefinedChunker(t *testing.T) {

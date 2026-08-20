@@ -48,6 +48,11 @@ in [`polynomial_hash.go`](/polynomial_hash.go). It retains the state reuse and
 targeted-search support of the optimized Gear implementation, but produces
 different chunk boundaries.
 
+`NewPolyRepMaxContentDefinedChunkerAVX2()` uses an explicit AVX2 assembly
+scanner in non-`purego` amd64 builds. It performs no runtime CPU detection or
+fallback; callers must ensure that AVX2 instructions are available. Its
+constructor panics in `purego` and non-amd64 builds.
+
 This repository also contains a copy of a paper titled
 ["Content-Defined Chunking with tight chunk size bounds"](/papers/cdc.pdf),
 which provides a formal description and analysis of RepMaxCDC. It also

@@ -56,6 +56,32 @@ func NewRepMaxContentDefinedChunker(
 // 2*minSizeBytes+horizonSizeBytes must fit in an int. The function panics if
 // these requirements are not met.
 func NewPolyRepMaxContentDefinedChunker(minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+	return newPolyRepMaxContentDefinedChunker(
+		newPolynomialRepMaxHash(),
+		minSizeBytes,
+		horizonSizeBytes,
+	)
+}
+
+// NewPolyRepMaxContentDefinedChunkerAVX2 returns a polynomial RepMaxCDC
+// chunker whose record-maxima scanner uses AVX2. Its cutting points and
+// parameter requirements are identical to NewPolyRepMaxContentDefinedChunker.
+// This implementation requires a non-purego amd64 build and performs no
+// runtime CPU detection or fallback. The caller must ensure that AVX2
+// instructions are available. Construction panics in purego and non-amd64
+// builds.
+func NewPolyRepMaxContentDefinedChunkerAVX2(minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
+	return newPolyRepMaxContentDefinedChunker(
+		newPolynomialAVX2RepMaxHash(),
+		minSizeBytes,
+		horizonSizeBytes,
+	)
+}
+
+func newPolyRepMaxContentDefinedChunker(
+	hash repMaxHash,
+	minSizeBytes, horizonSizeBytes int,
+) ContentDefinedChunker {
 	if minSizeBytes < polynomialHashWindowSizeBytes {
 		panic("Minimum chunk size is smaller than the polynomial hash window")
 	}
@@ -66,7 +92,7 @@ func NewPolyRepMaxContentDefinedChunker(minSizeBytes, horizonSizeBytes int) Cont
 		panic("Minimum chunk size and horizon size are too large")
 	}
 	return newRepMaxChunker(
-		newPolynomialRepMaxHash(),
+		hash,
 		minSizeBytes,
 		horizonSizeBytes,
 	)
