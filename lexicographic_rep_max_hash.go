@@ -1,6 +1,9 @@
 package cdc
 
-import "bytes"
+import (
+	"bytes"
+	"encoding/binary"
+)
 
 const lexicographicWindowPrefixSizeBytes = 8
 
@@ -10,6 +13,9 @@ const lexicographicWindowPrefixSizeBytes = 8
 // prefix.
 func lexicographicWindowPrefix(window []byte) uint64 {
 	prefixSize := min(len(window), lexicographicWindowPrefixSizeBytes)
+	if prefixSize == lexicographicWindowPrefixSizeBytes {
+		return binary.BigEndian.Uint64(window)
+	}
 	var prefix uint64
 	for _, b := range window[:prefixSize] {
 		prefix = prefix<<8 | uint64(b)
@@ -17,10 +23,58 @@ func lexicographicWindowPrefix(window []byte) uint64 {
 	return prefix
 }
 
+// lexicographicRepMaxScan holds the state needed only when a window's first
+// byte could reach the current maximum. Keeping that path out of the scanner's
+// main loop lets the common first-byte comparison stay small.
+type lexicographicRepMaxScan struct {
+	candidateOffsets []int
+	maximumWindow    []byte
+	maximumPrefix    uint64
+	baseOffset       int
+}
+
+//go:noinline
+func (s *lexicographicRepMaxScan) considerWindow(data []byte, start int) bool {
+	windowSize := len(s.maximumWindow)
+	candidateWindow := data[start : start+windowSize]
+	candidatePrefix := lexicographicWindowPrefix(candidateWindow)
+	if s.maximumPrefix > candidatePrefix {
+		return false
+	}
+	if s.maximumPrefix == candidatePrefix &&
+		(windowSize <= lexicographicWindowPrefixSizeBytes ||
+			bytes.Compare(
+				s.maximumWindow[lexicographicWindowPrefixSizeBytes:],
+				candidateWindow[lexicographicWindowPrefixSizeBytes:],
+			) >= 0) {
+		return false
+	}
+
+	s.maximumPrefix = candidatePrefix
+	s.maximumWindow = candidateWindow
+	s.candidateOffsets = append(s.candidateOffsets, s.baseOffset+start)
+	return true
+}
+
+//go:noinline
+func (s *lexicographicRepMaxScan) considerBlock(
+	data []byte,
+	start int,
+	maximumFirstByte byte,
+) byte {
+	firstBytes := data[start : start+8]
+	for i, firstByte := range firstBytes {
+		if maximumFirstByte <= firstByte && s.considerWindow(data, start+i) {
+			maximumFirstByte = firstByte
+		}
+	}
+	return maximumFirstByte
+}
+
 // scanLexicographicRepMaxRecordMaxima compares the fixed-size windows ending
-// at successive cutting points. The first eight bytes are maintained as a
-// uint64. Longer windows need a byte-wise comparison only when those prefixes
-// are equal.
+// at successive cutting points. Most windows can be rejected from their first
+// byte alone. The remaining prefix and suffix are read only when that byte
+// could match or exceed the current maximum.
 func scanLexicographicRepMaxRecordMaxima(
 	data, maximumWindow []byte,
 	baseOffset int,
@@ -30,59 +84,46 @@ func scanLexicographicRepMaxRecordMaxima(
 		panic("Missing maximum lexicographic window")
 	}
 	windowSize := len(maximumWindow)
-	incoming := data[windowSize:]
+	incomingLength := len(data) - windowSize
 
-	candidateOffsets := frontier.candidateOffsets
-	currentPrefix := frontier.currentHash
-	maximumPrefix := frontier.maximumHash
+	scan := lexicographicRepMaxScan{
+		candidateOffsets: frontier.candidateOffsets,
+		maximumWindow:    maximumWindow,
+		maximumPrefix:    frontier.maximumHash,
+		baseOffset:       baseOffset,
+	}
+	maximumFirstByte := maximumWindow[0]
+	candidateFirstBytes := data[1 : incomingLength+1]
 
-	if windowSize < lexicographicWindowPrefixSizeBytes {
-		shift := uint(64 - 8*windowSize)
-		mask := ^uint64(0) >> shift
-		if maximumPrefix == mask {
-			currentPrefix = lexicographicWindowPrefix(data[len(data)-windowSize:])
-		} else {
-			for i, b := range incoming {
-				currentPrefix = currentPrefix<<8 | uint64(b)
-				currentPrefix &= mask
-				if maximumPrefix >= currentPrefix {
-					continue
-				}
-				maximumPrefix = currentPrefix
-				candidateOffsets = append(candidateOffsets, baseOffset+i+1)
-				if maximumPrefix == mask {
-					currentPrefix = lexicographicWindowPrefix(
-						data[len(data)-windowSize:],
-					)
-					break
-				}
-			}
+	// The Go compiler does not unroll loops. Process eight bytes explicitly to
+	// reduce loop-control work while keeping the rare full-window path separate.
+	i := 0
+	for ; i+8 <= len(candidateFirstBytes); i += 8 {
+		b := candidateFirstBytes[i : i+8]
+		if maximumFirstByte <= b[0] ||
+			maximumFirstByte <= b[1] ||
+			maximumFirstByte <= b[2] ||
+			maximumFirstByte <= b[3] ||
+			maximumFirstByte <= b[4] ||
+			maximumFirstByte <= b[5] ||
+			maximumFirstByte <= b[6] ||
+			maximumFirstByte <= b[7] {
+			maximumFirstByte = scan.considerBlock(
+				data,
+				i+1,
+				maximumFirstByte,
+			)
 		}
-	} else {
-		for i := range incoming {
-			currentPrefix = currentPrefix<<8 | uint64(data[i+lexicographicWindowPrefixSizeBytes])
-			if maximumPrefix > currentPrefix {
-				continue
-			}
-
-			candidateWindow := data[i+1 : i+1+windowSize]
-			if maximumPrefix == currentPrefix {
-				if windowSize == lexicographicWindowPrefixSizeBytes ||
-					bytes.Compare(
-						maximumWindow[lexicographicWindowPrefixSizeBytes:],
-						candidateWindow[lexicographicWindowPrefixSizeBytes:],
-					) >= 0 {
-					continue
-				}
-			}
-
-			maximumPrefix = currentPrefix
-			maximumWindow = candidateWindow
-			candidateOffsets = append(candidateOffsets, baseOffset+i+1)
+	}
+	for ; i < len(candidateFirstBytes); i++ {
+		candidateFirstByte := candidateFirstBytes[i]
+		if maximumFirstByte <= candidateFirstByte &&
+			scan.considerWindow(data, i+1) {
+			maximumFirstByte = candidateFirstByte
 		}
 	}
 
-	frontier.candidateOffsets = candidateOffsets
-	frontier.currentHash = currentPrefix
-	frontier.maximumHash = maximumPrefix
+	frontier.candidateOffsets = scan.candidateOffsets
+	frontier.currentHash = lexicographicWindowPrefix(data[len(data)-windowSize:])
+	frontier.maximumHash = scan.maximumPrefix
 }
