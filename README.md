@@ -48,11 +48,12 @@ in [`polynomial_hash.go`](/polynomial_hash.go). It retains the state reuse and
 targeted-search support of the optimized Gear implementation, but produces
 different chunk boundaries.
 
-On Go 1.27+ amd64 builds made with `GOEXPERIMENT=simd`, the polynomial scanner
-uses Go's experimental `simd/archsimd` package. Other builds use the scalar
-scanner. Both implementations produce identical boundaries. The experimental
-amd64 implementation requires an AVX2-capable processor; it performs no
-runtime CPU detection.
+Builds made with `GOEXPERIMENT=simd` use Go's experimental SIMD packages. On
+amd64, the polynomial scanner uses `simd/archsimd`; other architectures use
+the portable `simd` package. Builds without the experiment use the scalar
+scanner. All implementations produce identical boundaries. The amd64
+implementation requires an AVX2-capable processor; it performs no runtime CPU
+detection.
 
 This repository also contains a copy of a paper titled
 ["Content-Defined Chunking with tight chunk size bounds"](/papers/cdc.pdf),

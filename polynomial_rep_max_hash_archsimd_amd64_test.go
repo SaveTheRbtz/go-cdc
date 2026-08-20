@@ -32,7 +32,7 @@ func TestScanPolynomialRepMaxRecordMaximaArchSIMD(t *testing.T) {
 		currentHash := random.Uint64()
 		maximumHash := random.Uint64()
 		baseOffset := random.Intn(4096)
-		scalar := repMaxFrontier{
+		reference := repMaxFrontier{
 			candidateOffsets: []int{3, 7},
 			currentHash:      currentHash,
 			maximumHash:      maximumHash,
@@ -43,9 +43,9 @@ func TestScanPolynomialRepMaxRecordMaximaArchSIMD(t *testing.T) {
 			maximumHash:      maximumHash,
 		}
 
-		scanPolynomialRepMaxRecordMaximaScalar(data, baseOffset, &scalar)
+		scanPolynomialRepMaxRecordMaximaNaive(data, baseOffset, &reference)
 		scanPolynomialRepMaxRecordMaxima(data, baseOffset, &archSIMD)
-		require.Equal(t, scalar, archSIMD, "incoming length %d", length)
+		require.Equal(t, reference, archSIMD, "incoming length %d", length)
 	}
 }
 
@@ -64,11 +64,11 @@ func TestScanPolynomialRepMaxRecordMaximaArchSIMDCandidateBufferResume(t *testin
 	data := make([]byte, polynomialHashWindowSizeBytes+len(outgoing)+16)
 	copy(data, outgoing[:])
 
-	scalar := repMaxFrontier{}
+	reference := repMaxFrontier{}
 	archSIMD := repMaxFrontier{}
-	scanPolynomialRepMaxRecordMaximaScalar(data, baseOffset, &scalar)
+	scanPolynomialRepMaxRecordMaximaNaive(data, baseOffset, &reference)
 	scanPolynomialRepMaxRecordMaxima(data, baseOffset, &archSIMD)
-	require.Equal(t, scalar, archSIMD)
+	require.Equal(t, reference, archSIMD)
 
 	wantOffsets := make([]int, len(outgoing))
 	for i := range wantOffsets {

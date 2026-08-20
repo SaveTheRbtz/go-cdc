@@ -52,10 +52,11 @@ func NewRepMaxContentDefinedChunker(
 // byte in data[i-64:i] has exponent 63 and data[i] is not included. Hashes are
 // compared as unsigned 64-bit integers.
 //
-// On Go 1.27+ amd64 builds made with GOEXPERIMENT=simd, the record-maxima
-// scanner uses the experimental simd/archsimd package and requires an
-// AVX2-capable processor. Other builds use the scalar scanner. Both produce
-// identical cutting points.
+// Builds made with GOEXPERIMENT=simd use the experimental simd/archsimd
+// package on amd64 and the portable simd package on other architectures.
+// Builds without the experiment use the scalar scanner. All implementations
+// produce identical cutting points. The amd64 implementation requires an
+// AVX2-capable processor and performs no runtime CPU detection.
 //
 // minSizeBytes must be at least 64, horizonSizeBytes must be non-negative, and
 // 2*minSizeBytes+horizonSizeBytes must fit in an int. The function panics if
