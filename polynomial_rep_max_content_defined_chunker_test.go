@@ -44,6 +44,12 @@ func TestPolynomialHashRemovalFactor(t *testing.T) {
 		factor *= polynomialHashBase
 	}
 	require.Equal(t, polynomialHashRemovalFactor, factor)
+	require.Equal(
+		t,
+		^(polynomialHashByteCoefficientOffset*polynomialHashRemovalFactor)+
+			polynomialHashByteCoefficientOffset+1,
+		polynomialHashRollingAdjustment,
+	)
 }
 
 func TestNewPolyRepMaxContentDefinedChunkerInvalidParameters(t *testing.T) {

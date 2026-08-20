@@ -24,6 +24,10 @@ const (
 	// polynomialHashWindowSizeBytes modulo 2^64. It is multiplied by the
 	// outgoing coefficient when advancing the rolling hash by one byte.
 	polynomialHashRemovalFactor uint64 = 0x66c0333b9c3b3301
+
+	// polynomialHashRollingAdjustment combines the coefficient offsets of the
+	// incoming and outgoing bytes: 1-polynomialHashRemovalFactor modulo 2^64.
+	polynomialHashRollingAdjustment uint64 = 0x993fccc463c4cd00
 )
 
 // computePolynomialHash computes the polynomial hash of data using Horner's
@@ -54,7 +58,7 @@ type polynomialRollingHash struct {
 	windowSize int
 }
 
-func (h *polynomialRollingHash) AddByte(b byte) uint64 {
+func (h *polynomialRollingHash) addByte(b byte) uint64 {
 	if h.windowSize < polynomialHashWindowSizeBytes {
 		h.hash = h.hash*polynomialHashBase + uint64(b) + polynomialHashByteCoefficientOffset
 		h.windowSize++

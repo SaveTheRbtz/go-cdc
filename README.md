@@ -33,24 +33,20 @@ Two Gear-based implementations of RepMaxCDC are included:
   A very simple, but inefficient implementation that hashes input data
   repeatedly.
 
-- [`rep_max_content_defined_chunker.go`](/rep_max_content_defined_chunker.go):
-  An optimized implementation that avoids redundant hashing on the
-  normal path by storing state in lists across calls. After a
-  horizon-forced cut, it may need to hash the start of the next chunk
-  again to reconstruct discarded candidates.
+- [`rep_max_chunk_reader.go`](/rep_max_chunk_reader.go): The optimized
+  RepMaxCDC engine shared by the Gear and polynomial variants. It avoids
+  redundant hashing on the normal path by retaining a small frontier of
+  record maxima across calls. A concrete internal hash configuration selects
+  the Gear or polynomial scanner once per region, keeping each hot loop direct.
 
 Tests are used to validate that both implementations yield the same
 results.
 
-An implementation using a polynomial rolling hash is also provided:
-
-- [`polynomial_rep_max_content_defined_chunker.go`](/polynomial_rep_max_content_defined_chunker.go):
-  An optimized implementation, created with
-  `NewPolyRepMaxContentDefinedChunker()`, that uses a fixed 64-byte
-  polynomial rolling hash modulo $2^{64}$ in place of the Gear hash.
-  It retains the state reuse and targeted-search support of the
-  optimized Gear implementation, but produces different chunk
-  boundaries.
+`NewPolyRepMaxContentDefinedChunker()` selects the polynomial variant of the
+shared RepMaxCDC engine. Its fixed 64-byte rolling hash modulo $2^{64}$ lives
+in [`polynomial_hash.go`](/polynomial_hash.go). It retains the state reuse and
+targeted-search support of the optimized Gear implementation, but produces
+different chunk boundaries.
 
 This repository also contains a copy of a paper titled
 ["Content-Defined Chunking with tight chunk size bounds"](/papers/cdc.pdf),
