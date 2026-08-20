@@ -52,27 +52,17 @@ func NewRepMaxContentDefinedChunker(
 // byte in data[i-64:i] has exponent 63 and data[i] is not included. Hashes are
 // compared as unsigned 64-bit integers.
 //
+// On Go 1.27+ amd64 builds made with GOEXPERIMENT=simd, the record-maxima
+// scanner uses the experimental simd/archsimd package and requires an
+// AVX2-capable processor. Other builds use the scalar scanner. Both produce
+// identical cutting points.
+//
 // minSizeBytes must be at least 64, horizonSizeBytes must be non-negative, and
 // 2*minSizeBytes+horizonSizeBytes must fit in an int. The function panics if
 // these requirements are not met.
 func NewPolyRepMaxContentDefinedChunker(minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
 	return newPolyRepMaxContentDefinedChunker(
 		newPolynomialRepMaxHash(),
-		minSizeBytes,
-		horizonSizeBytes,
-	)
-}
-
-// NewPolyRepMaxContentDefinedChunkerAVX2 returns a polynomial RepMaxCDC
-// chunker whose record-maxima scanner uses AVX2. Its cutting points and
-// parameter requirements are identical to NewPolyRepMaxContentDefinedChunker.
-// This implementation requires a non-purego amd64 build and performs no
-// runtime CPU detection or fallback. The caller must ensure that AVX2
-// instructions are available. Construction panics in purego and non-amd64
-// builds.
-func NewPolyRepMaxContentDefinedChunkerAVX2(minSizeBytes, horizonSizeBytes int) ContentDefinedChunker {
-	return newPolyRepMaxContentDefinedChunker(
-		newPolynomialAVX2RepMaxHash(),
 		minSizeBytes,
 		horizonSizeBytes,
 	)

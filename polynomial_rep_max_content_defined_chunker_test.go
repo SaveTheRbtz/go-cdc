@@ -61,27 +61,21 @@ func TestPolynomialHashRemovalFactor(t *testing.T) {
 }
 
 func TestNewPolyRepMaxContentDefinedChunkerInvalidParameters(t *testing.T) {
-	constructors := map[string]func(int, int) ContentDefinedChunker{
-		"Scalar": NewPolyRepMaxContentDefinedChunker,
-		"AVX2":   NewPolyRepMaxContentDefinedChunkerAVX2,
-	}
-	for name, constructor := range constructors {
-		t.Run(name+"/MinimumSizeTooSmall", func(t *testing.T) {
-			require.Panics(t, func() {
-				constructor(polynomialHashWindowSizeBytes-1, 0)
-			})
+	t.Run("MinimumSizeTooSmall", func(t *testing.T) {
+		require.Panics(t, func() {
+			NewPolyRepMaxContentDefinedChunker(polynomialHashWindowSizeBytes-1, 0)
 		})
-		t.Run(name+"/NegativeHorizon", func(t *testing.T) {
-			require.Panics(t, func() {
-				constructor(polynomialHashWindowSizeBytes, -1)
-			})
+	})
+	t.Run("NegativeHorizon", func(t *testing.T) {
+		require.Panics(t, func() {
+			NewPolyRepMaxContentDefinedChunker(polynomialHashWindowSizeBytes, -1)
 		})
-		t.Run(name+"/PeekSizeOverflow", func(t *testing.T) {
-			require.Panics(t, func() {
-				constructor(math.MaxInt/2+1, 0)
-			})
+	})
+	t.Run("PeekSizeOverflow", func(t *testing.T) {
+		require.Panics(t, func() {
+			NewPolyRepMaxContentDefinedChunker(math.MaxInt/2+1, 0)
 		})
-	}
+	})
 }
 
 func polynomialRepMaxChunkSizes(t *testing.T, data []byte, chunker ContentDefinedChunker) []int {
