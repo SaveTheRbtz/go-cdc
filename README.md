@@ -27,18 +27,30 @@ RepMaxCDC provides:
   Bazel's existing remote execution protocol in a backward compatible
   way.
 
-Two implementations of RepMaxCDC are included:
+Two Gear-based implementations of RepMaxCDC are included:
 
 - [`simple_rep_max_content_defined_chunker.go`](/simple_rep_max_content_defined_chunker.go):
   A very simple, but inefficient implementation that hashes input data
   repeatedly.
 
 - [`rep_max_content_defined_chunker.go`](/rep_max_content_defined_chunker.go):
-  An optimized implementation that eliminates redundant hashing by
-  storing state in lists that are preserved across calls.
+  An optimized implementation that avoids redundant hashing on the
+  normal path by storing state in lists across calls. After a
+  horizon-forced cut, it may need to hash the start of the next chunk
+  again to reconstruct discarded candidates.
 
 Tests are used to validate that both implementations yield the same
 results.
+
+An implementation using a polynomial rolling hash is also provided:
+
+- [`polynomial_rep_max_content_defined_chunker.go`](/polynomial_rep_max_content_defined_chunker.go):
+  An optimized implementation, created with
+  `NewPolyRepMaxContentDefinedChunker()`, that uses a fixed 64-byte
+  polynomial rolling hash modulo $2^{64}$ in place of the Gear hash.
+  It retains the state reuse and targeted-search support of the
+  optimized Gear implementation, but produces different chunk
+  boundaries.
 
 This repository also contains a copy of a paper titled
 ["Content-Defined Chunking with tight chunk size bounds"](/papers/cdc.pdf),
